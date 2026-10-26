@@ -1,0 +1,37 @@
+{
+  "groupBy": "none",
+  "sortBy": "extra",
+  "order": "descending",
+  "search": "",
+  "extraCharge": {
+    "min": 0,
+    "max": 3000
+  },
+  "gpa": {
+    "min": 0,
+    "max": 3.5
+  },
+  "filters": {
+    "semester": {
+      "want": [
+        "Full-year or semester",
+        "Full-year only"
+      ],
+      "dontWant": []
+    },
+    "language": {
+      "want": [],
+      "dontWant": [
+        "Japanese",
+        "Portuguese",
+        "Spanish"
+      ]
+    },
+    "status": {
+      "want": [],
+      "dontWant": [
+        "Suspended"
+      ]
+    }
+  }
+}
