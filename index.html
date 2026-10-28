@@ -20,6 +20,8 @@ summary .st{font-weight:400;font-size:12px;color:var(--mute)}summary .st b{font-
 .chip.inc{background:var(--okbg);color:var(--ok);border-color:var(--ok)}.chip.inc::before{content:'✓ '}
 .chip.exc{background:var(--nobg);color:var(--no);border-color:var(--no);text-decoration:line-through}.chip.exc::before{content:'✕ '}
 .chip.inc small,.chip.exc small{color:inherit}
+.chip.na{opacity:.38}.chip.na:not(.inc):not(.exc){cursor:not-allowed}
+.nums .av{margin-left:auto;white-space:nowrap}.nums .av.none{color:var(--no)}
 .mode{margin-left:auto;font-weight:400;font-size:12px;color:var(--mute);display:flex;gap:6px;align-items:center}
 .mode select{min-width:0;padding:2px 6px;font-size:12px}
 .help{font-size:12px;color:var(--mute);padding:0 16px;max-width:1300px;margin:0 auto 4px}
@@ -99,11 +101,11 @@ function updateStatus(){FILTERS.forEach(f=>{const s=state[f.k];const p=[];if(s.i
  document.querySelectorAll('.chip').forEach(c=>{const s=state[c.dataset.f];c.classList.toggle('inc',s.inc.has(c.dataset.v));c.classList.toggle('exc',s.exc.has(c.dataset.v))});}
 document.addEventListener('click',e=>{
  const c=e.target.closest('.chip');
- if(c){const s=state[c.dataset.f],v=c.dataset.v;if(s.inc.has(v)){s.inc.delete(v);s.exc.add(v)}else if(s.exc.has(v)){s.exc.delete(v)}else s.inc.add(v);render();return}
+ if(c){const s=state[c.dataset.f],v=c.dataset.v;if(c.classList.contains('na')&&!s.inc.has(v)&&!s.exc.has(v))return;if(s.inc.has(v)){s.inc.delete(v);s.exc.add(v)}else if(s.exc.has(v)){s.exc.delete(v)}else s.inc.add(v);render();return}
  const th=e.target.closest('th');if(th){const k=th.dataset.k;if(k===sortK)sortD=-sortD;else{sortK=k;sortD=-1}syncSort();render()}
 });
 const narrowed=k=>range[k][0]>LIM[k][0]||range[k][1]<LIM[k][1];
-function passes(d){for(const k of RK){const v=d[FIELD[k]];if(v==null){if(narrowed(k))return false;continue}if(v<range[k][0]-1e-9||v>range[k][1]+1e-9)return false}for(const f of FILTERS){const s=state[f.k],vals=f.val(d);
+function passes(d,skip){for(const k of RK){if(k===skip)continue;const v=d[FIELD[k]];if(v==null){if(narrowed(k))return false;continue}if(v<range[k][0]-1e-9||v>range[k][1]+1e-9)return false}for(const f of FILTERS){if(f.k===skip)continue;const s=state[f.k],vals=f.val(d);
   if(vals.some(v=>s.exc.has(v)))return false;
   if(s.inc.size){if(f.multi&&s.mode==='all'){for(const v of s.inc)if(!vals.includes(v))return false}else if(!vals.some(v=>s.inc.has(v)))return false}}
  return true}
@@ -120,8 +122,9 @@ function cell(d,k){switch(k){
  default:return esc(d[k]);}}
 function table(rows){rows=[...rows].sort((a,b)=>{let x=a[sortK],y=b[sortK];if(x==null||y==null){if(x==null&&y==null)return a.name.localeCompare(b.name);return x==null?1:-1}if(sortK==='specs'){x=x.length;y=y.length}return (typeof x==='number'?x-y:String(x).localeCompare(String(y)))*sortD||a.name.localeCompare(b.name)});
  return `<div class="tbl"><table><thead><tr>${COLS.map(([k,l,n])=>`<th data-k="${k}" class="${n||''}">${l}${k===sortK?(sortD>0?' ▲':' ▼'):''}</th>`).join('')}</tr></thead><tbody>${rows.map(d=>`<tr>${COLS.map(([k,,n])=>`<td class="${n||''}${k==='specs'?' specs':''}">${cell(d,k)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`}
-let render=function(){updateStatus();const q=$('q').value.toLowerCase().trim();
- const rows=D.filter(d=>passes(d)&&(!q||d.name.toLowerCase().includes(q)));
+const matchQ=d=>{const q=$('q').value.toLowerCase().trim();return !q||d.name.toLowerCase().includes(q)};
+let render=function(){updateStatus();
+ const rows=D.filter(d=>passes(d)&&matchQ(d));
  $('count').textContent=`${rows.length} universit${rows.length===1?'y':'ies'} · ${fmt(rows.reduce((s,d)=>s+d.spots,0))} spots`;
  const g=$('grp').value;let html='';const si=state.spec.inc;
  if(g==='none')html=table(rows);else{const m=new Map();rows.forEach(d=>{const keys=g==='spec'?(d.specs.length?d.specs:['(none listed)']):[d.country];keys.forEach(k=>{if(g==='spec'&&si.size&&!si.has(k))return;if(g==='spec'&&state.spec.exc.has(k))return;(m.get(k)||m.set(k,[]).get(k)).push(d)})});
@@ -139,6 +142,22 @@ function setRange(k,which,v){v=Math.min(LIM[k][1],Math.max(LIM[k][0],+v||0));if(
  if(which===0)range[k]=[Math.min(v,range[k][1]),range[k][1]];else range[k]=[range[k][0],Math.max(v,range[k][0])];render();}
 for(const k of RK){$(k+'Min').addEventListener('input',e=>setRange(k,0,e.target.value));$(k+'Max').addEventListener('input',e=>setRange(k,1,e.target.value));
  $(k+'MinN').addEventListener('change',e=>setRange(k,0,e.target.value));$(k+'MaxN').addEventListener('change',e=>setRange(k,1,e.target.value));}
+// ---- availability: gray out what the other filters make impossible ----
+function facet(f){const s=state[f.k],cnt=new Map();
+ D.forEach(d=>{if(!matchQ(d)||!passes(d,f.k))return;const vals=f.val(d);
+  vals.forEach(v=>{if(vals.some(x=>x!==v&&s.exc.has(x)))return;if(f.multi&&s.mode==='all'){for(const x of s.inc)if(x!==v&&!vals.includes(x))return}cnt.set(v,(cnt.get(v)||0)+1)})});
+ return cnt}
+function availRange(k){let lo=Infinity,hi=-Infinity;D.forEach(d=>{const v=d[FIELD[k]];if(v==null||!matchQ(d)||!passes(d,k))return;if(v<lo)lo=v;if(v>hi)hi=v});return lo<=hi?[lo,hi]:null}
+const AVFMT={ex:v=>'€'+fmt(v),gp:v=>v.toFixed(1),sf:v=>'#'+v,cl:v=>v.toFixed(1)};
+for(const k of RK){$(k+'MaxN').parentNode.insertAdjacentHTML('beforeend',`<span class="av" id="${k}Av"></span>`)}
+function updateAvail(){
+ FILTERS.forEach(f=>{const cnt=facet(f);document.querySelectorAll(`.chip[data-f="${f.k}"]`).forEach(c=>{const n=cnt.get(c.dataset.v)||0;c.querySelector('small').textContent=n;c.classList.toggle('na',!n);c.title=n?'':'Not possible with your other filters'})});
+ for(const k of RK){const a=availRange(k),[L,H]=LIM[k],t=$(k+'Av'),fl=$(k+'Dual').querySelector('.fill');
+  // only the part of the selected range that some university can reach stays blue
+  const lo=a&&Math.max(a[0],range[k][0]),hi=a&&Math.min(a[1],range[k][1]);
+  if(!a||lo>hi)fl.style.display='none';else{fl.style.display='';fl.style.left=((lo-L)/(H-L)*100)+'%';fl.style.right=(100-(hi-L)/(H-L)*100)+'%'}
+  if(!a){t.textContent='none available';t.classList.add('none');continue}
+  t.classList.remove('none');t.textContent=`available: ${AVFMT[k](a[0])} – ${AVFMT[k](a[1])}`}}
 // ---- config ----
 const MY_CONFIG={"groupBy": "none", "sortBy": "extra", "order": "descending", "search": "", "extraCharge": {"min": 0, "max": 3000}, "gpa": {"min": 0, "max": 3.5}, "filters": {"semester": {"want": ["Full-year or semester", "Full-year only"], "dontWant": []}, "language": {"want": [], "dontWant": ["Japanese", "Portuguese", "Spanish"]}, "status": {"want": [], "dontWant": ["Suspended"]}}, "safetyRank": {"min": 1, "max": 163}, "costOfLiving": {"min": 10, "max": 70}};
 function getConfig(){const f={};FILTERS.forEach(x=>{const s=state[x.k];if(s.inc.size||s.exc.size||s.mode!=='any')f[x.k]={want:[...s.inc],dontWant:[...s.exc],...(x.multi?{mustHave:s.mode}:{})}});
@@ -153,7 +172,7 @@ $('cfgLoadBtn').addEventListener('click',()=>$('cfgFile').click());
 $('cfgFile').addEventListener('change',async e=>{const f=e.target.files[0];if(!f)return;try{applyConfig(JSON.parse(await f.text()));flash('Loaded '+f.name)}catch(err){flash('Could not read that file')}e.target.value=''});
 // keep the current filters in the address bar so a bookmark / refresh keeps them
 function saveHash(){try{history.replaceState(null,'','#cfg='+encodeURIComponent(JSON.stringify(getConfig())))}catch(e){}}
-const _render=render;render=function(){syncRanges();_render();saveHash();};
+const _render=render;render=function(){syncRanges();_render();updateAvail();saveHash();};
 buildFilters();
 let start=MY_CONFIG;try{const m=location.hash.match(/#cfg=(.*)/);if(m)start=JSON.parse(decodeURIComponent(m[1]))}catch(e){}
 applyConfig(start);
